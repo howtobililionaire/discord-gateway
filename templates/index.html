@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocket Gambling Bot Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <style>
+        .card {
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .bot-status {
+            font-weight: bold;
+        }
+        .status-online {
+            color: var(--bs-success);
+        }
+        .status-offline {
+            color: var(--bs-danger);
+        }
+        .status-starting {
+            color: var(--bs-warning);
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <header class="pb-3 mb-4 border-bottom">
+            <div class="d-flex align-items-center">
+                <img src="/static/bot-logo.png" width="40" alt="Bot Logo" class="me-3" onerror="this.src='https://via.placeholder.com/40'">
+                <h1 class="fs-4">Rocket Gambling Bot Dashboard</h1>
+            </div>
+        </header>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <h3>Bot Status</h3>
+                    <p class="bot-status fs-4" id="bot-status">
+                        {% if bot_status == 'Running' %}
+                        <span class="status-online">● Online</span>
+                        {% elif bot_status == 'Starting' %}
+                        <span class="status-starting">● Starting</span>
+                        {% else %}
+                        <span class="status-offline">● Offline</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <h3>Servers</h3>
+                    <p class="fs-4" id="guild-count">Loading...</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <h3>Uptime</h3>
+                    <p class="fs-4" id="uptime">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Global Stats</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table">
+                                <tbody>
+                                    <tr>
+                                        <td>Total Bets</td>
+                                        <td id="total-bets">Loading...</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Cash Won</td>
+                                        <td id="total-cash-won">Loading...</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Cash Lost</td>
+                                        <td id="total-cash-lost">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="card-title mb-0">Leaderboard</h2>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-secondary active" id="cash-btn">Cash</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="level-btn">Level</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="wins-btn">Wins</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="profit-btn">Profit</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="leaderboard-container">
+                            <p class="text-center">Loading leaderboard data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Function to format numbers with commas
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        // Helper function to get the API base URL
+        function getApiBaseUrl() {
+            // Use the current host and protocol but always use port 5000
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            
+            // Handle local development vs production
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                return `${protocol}//${hostname}:5000`;
+            } else {
+                // For Replit hosting, use the external URL
+                return `${protocol}//${hostname}`;
+            }
+        }
+
+        // Function to perform a fetch with error handling
+        function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
+            console.log(`Fetching from: ${url}`);
+
+            return new Promise((resolve, reject) => {
+                const attemptFetch = (attemptsLeft) => {
+                    console.log(`Attempt #${4-attemptsLeft} for ${url}`);
+
+                    fetch(url, {
+                        ...options,
+                        mode: 'cors',
+                        cache: 'no-cache', // Don't cache the request
+                        credentials: 'same-origin', // Include cookies for same-origin requests
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache',
+                            ...options.headers
+                        }
+                    })
+                    .then(response => {
+                        console.log(`Response status: ${response.status} for ${url}`);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log(`Success for ${url}`, data);
+                        resolve(data);
+                    })
+                    .catch(error => {
+                        console.error(`Fetch error for ${url}: ${error.message}, attempts left: ${attemptsLeft}`);
+                        if (attemptsLeft > 0) {
+                            console.log(`Retrying in ${delay}ms...`);
+                            setTimeout(() => attemptFetch(attemptsLeft - 1), delay);
+                        } else {
+                            console.error(`All retry attempts failed for ${url}`);
+                            reject(error);
+                        }
+                    });
+                };
+                
+                attemptFetch(retries);
+            });
+        }
+
+        // Function to update status
+        function updateStatus() {
+            fetchWithRetry(getApiBaseUrl() + '/api/status')
+                .then(data => {
+                    let statusElement = document.getElementById('bot-status');
+                    let statusClass = '';
+                    let statusText = '';
+
+                    if (data.status === 'Running') {
+                        statusClass = 'status-online';
+                        statusText = '● Online';
+                    } else if (data.status === 'Starting') {
+                        statusClass = 'status-starting';
+                        statusText = '● Starting';
+                    } else {
+                        statusClass = 'status-offline';
+                        statusText = '● Offline';
+                    }
+
+                    statusElement.innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+                    
+                    document.getElementById('guild-count').textContent = data.connected_guilds;
+                    document.getElementById('uptime').textContent = data.uptime;
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                });
+        }
+
+        // Function to update global stats
+        function updateGlobalStats() {
+            fetchWithRetry(getApiBaseUrl() + '/api/stats')
+                .then(data => {
+                    document.getElementById('total-bets').textContent = formatNumber(data.total_bets);
+                    document.getElementById('total-cash-won').textContent = formatNumber(data.total_cash_won);
+                    document.getElementById('total-cash-lost').textContent = formatNumber(data.total_cash_lost);
+                })
+                .catch(error => {
+                    console.error('Error fetching global stats:', error);
+                });
+        }
+
+        // Function to update leaderboard
+        function updateLeaderboard(category = 'cash') {
+            fetchWithRetry(getApiBaseUrl() + `/api/leaderboard/${category}`)
+                .then(data => {
+                    const container = document.getElementById('leaderboard-container');
+                    
+                    if (data.length === 0) {
+                        container.innerHTML = '<p class="text-center">No leaderboard data available</p>';
+                        return;
+                    }
+                    
+                    let html = '<div class="table-responsive"><table class="table">';
+                    html += '<thead><tr><th>#</th><th>User</th><th>Value</th></tr></thead><tbody>';
+                    
+                    data.forEach((entry, index) => {
+                        let valueDisplay = '';
+                        
+                        if (category === 'profit') {
+                            const profit = entry.total_cash_won - entry.total_cash_lost;
+                            valueDisplay = profit >= 0 ? 
+                                `+${formatNumber(profit)}` : 
+                                `-${formatNumber(Math.abs(profit))}`;
+                        } else if (category === 'cash') {
+                            valueDisplay = formatNumber(entry.cash);
+                        } else if (category === 'level') {
+                            valueDisplay = `Level ${entry.level} (${entry.xp} XP)`;
+                        } else if (category === 'wins') {
+                            valueDisplay = formatNumber(entry.wins);
+                        }
+                        
+                        html += `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>User ${entry.id}</td>
+                                <td>${valueDisplay}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += '</tbody></table></div>';
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error fetching leaderboard:', error);
+                    document.getElementById('leaderboard-container').innerHTML = 
+                        '<p class="text-center text-danger">Error loading leaderboard data</p>';
+                });
+        }
+
+        // Set up event listeners for leaderboard buttons
+        document.getElementById('cash-btn').addEventListener('click', function(e) {
+            setActiveButton(this);
+            updateLeaderboard('cash');
+        });
+        
+        document.getElementById('level-btn').addEventListener('click', function(e) {
+            setActiveButton(this);
+            updateLeaderboard('level');
+        });
+        
+        document.getElementById('wins-btn').addEventListener('click', function(e) {
+            setActiveButton(this);
+            updateLeaderboard('wins');
+        });
+        
+        document.getElementById('profit-btn').addEventListener('click', function(e) {
+            setActiveButton(this);
+            updateLeaderboard('profit');
+        });
+        
+        function setActiveButton(button) {
+            // Remove active class from all buttons
+            document.querySelectorAll('.btn-group .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to clicked button
+            button.classList.add('active');
+        }
+
+        // Initialize data
+        updateStatus();
+        updateGlobalStats();
+        updateLeaderboard();
+        
+        // Update data periodically
+        setInterval(updateStatus, 10000);
+        setInterval(updateGlobalStats, 10000);
+    </script>
+</body>
+</html>
